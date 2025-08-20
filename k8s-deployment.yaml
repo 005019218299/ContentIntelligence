@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: content-intelligence-v9
+  labels:
+    app: content-intelligence-v9
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: content-intelligence-v9
+  template:
+    metadata:
+      labels:
+        app: content-intelligence-v9
+    spec:
+      containers:
+      - name: content-intelligence-v9
+        image: content-intelligence-v9:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /py/v9/health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /py/v9/health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: logs
+          mountPath: /app/logs
+        - name: models
+          mountPath: /app/models
+      volumes:
+      - name: logs
+        emptyDir: {}
+      - name: models
+        persistentVolumeClaim:
+          claimName: models-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: content-intelligence-v9-service
+spec:
+  selector:
+    app: content-intelligence-v9
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8000
+  type: LoadBalancer
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: content-intelligence-v9-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - api.contentintelligence.vn
+    secretName: tls-secret
+  rules:
+  - host: api.contentintelligence.vn
+    http:
+      paths:
+      - path: /py/v9
+        pathType: Prefix
+        backend:
+          service:
+            name: content-intelligence-v9-service
+            port:
+              number: 80
